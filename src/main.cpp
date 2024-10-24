@@ -100,7 +100,7 @@ void loop()
       strip.neoPixelFill(50,50,50,true);
       fsm1.start = false;
     }
-    if(fsm1.tis-fsm1.tup >= 1000){
+    if(fsm1.tis-fsm1.tup >= 2000){
       if(led>=0){
         Serial.print(led);
         strip.neoPixelSetValue(led, 0, 0, 0,true);
