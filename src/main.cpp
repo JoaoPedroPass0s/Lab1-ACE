@@ -278,7 +278,6 @@ void loop()
       current_led_brightness = 100 - (fsm1.tis-fsm1.tup)*100/intervalOptions[config.timer_time];
       if(last_led_brightness != current_led_brightness && current_led_brightness > 0){
         strip.neoPixelSetValue(led, current_led_brightness, current_led_brightness, current_led_brightness,true);
-        Serial.print(current_led_brightness);
         last_led_brightness = current_led_brightness;
       }
     }
