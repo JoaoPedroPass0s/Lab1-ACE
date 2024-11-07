@@ -37,6 +37,29 @@ enum {
   sm1_blink
 };
 
+typedef struct {
+  unsigned long lastDebounceTime;
+  bool lastButtonState;
+} debounce_t;
+
+debounce_t debounceSgo = {0, HIGH};   // Debounce state for Sgo button
+debounce_t debounceSmore = {0, HIGH}; // Debounce state for Smore button
+debounce_t debounceSesc = {0, HIGH};  // Debounce state for Sesc button
+
+// Modified debounce function that takes a pointer to debounce_t
+bool debounce(uint8_t buttonPin, unsigned long debounceDelay, debounce_t *debounceState) {
+  bool currentButtonState = digitalRead(buttonPin);
+
+  if (currentButtonState != debounceState->lastButtonState) {
+    debounceState->lastDebounceTime = millis();
+  }
+
+  if ((millis() - debounceState->lastDebounceTime) > debounceDelay) {
+    debounceState->lastButtonState = currentButtonState;
+  }
+
+  return debounceState->lastButtonState;
+}
 // Set new state
 void set_state(fsm_t& fsm, int new_state)
 {
@@ -63,11 +86,13 @@ void setup()
 
 void loop() 
 {
-  // Read the button state
-  Sgo = !digitalRead(Sgo_pin);
-  Smore = !digitalRead(Smore_pin);
-  Sesc = !digitalRead(Sesc_pin);
-
+  
+  Sgo = !debounce(Sgo_pin, 10, &debounceSgo);     // Passer la structure debounce spécifique à chaque bouton
+  Smore = !debounce(Smore_pin, 10, &debounceSmore);
+  Sesc = !debounce(Sesc_pin, 10, &debounceSesc);
+  Serial.print("Sgo: "); Serial.println(Sgo);
+  Serial.print("Smore: "); Serial.println(Smore);
+  Serial.print("Sesc: "); Serial.println(Sesc);
   // Update the time in state (tis) for the finite state machine
   const uint32_t currentTime = millis();
   fsm1.tis = currentTime - fsm1.tes;
