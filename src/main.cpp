@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Bounce2.h>
 
 #define MAXIMUM_NUM_NEOPIXELS 5
 #include <NeoPixelConnect.h>
@@ -7,6 +8,10 @@
 #define Sgo_pin 2
 #define Smore_pin 3
 #define Sesc_pin 4
+
+Bounce debouncerSgo = Bounce();
+Bounce debouncerSmore = Bounce();
+Bounce debouncerSesc = Bounce();
 
 // Create an instance of NeoPixelConnect and initialize it
 // to use GPIO pin 22 as the control pin, for a string
@@ -39,8 +44,6 @@ config_t temp_config;
 
 uint8_t Sgo, Smore, Sesc;
 
-uint32_t interval, last_cycle;
-
 char serialInput = 0;
 
 int led;
@@ -57,9 +60,9 @@ unsigned long last_pause_tup = 0;
 unsigned long pressStartTime = 0;
 
 const int intervalOptions[] = {1000, 2000, 5000, 10000};
-const int r[] = {0, 0, 255, 255}; // red values
-const int g[] = {0, 255, 255, 255}; // green values
-const int b[] = {255, 0, 0, 255}; // blue values
+const int r[] = {0, 0, 10, 10}; // red values
+const int g[] = {0, 10, 10, 10}; // green values
+const int b[] = {10, 0, 0, 10}; // blue values
 
 // meaningful names for the fsm1 states
 enum {
@@ -69,29 +72,6 @@ enum {
   sm1_config
 };
 
-typedef struct {
-  unsigned long lastDebounceTime;
-  bool lastButtonState;
-} debounce_t;
-
-debounce_t debounceSgo = {0, HIGH};   // Debounce state for Sgo button
-debounce_t debounceSmore = {0, HIGH}; // Debounce state for Smore button
-debounce_t debounceSesc = {0, HIGH};  // Debounce state for Sesc button
-
-// Modified debounce function that takes a pointer to debounce_t
-bool debounce(uint8_t buttonPin, unsigned long debounceDelay, debounce_t *debounceState) {
-  bool currentButtonState = digitalRead(buttonPin);
-
-  if (currentButtonState != debounceState->lastButtonState) {
-    debounceState->lastDebounceTime = millis();
-  }
-
-  if ((millis() - debounceState->lastDebounceTime) > debounceDelay) {
-    debounceState->lastButtonState = currentButtonState;
-  }
-
-  return debounceState->lastButtonState;
-}
 // Set new state
 void set_state(fsm_t& fsm, int new_state)
 {
@@ -151,7 +131,7 @@ void process_config(){
     if(config.timer_time > 3){
       config.timer_time = 0;
     }
-    blink_leds(0,0,255,0,MAXIMUM_NUM_NEOPIXELS,250);
+    blink_leds(10,0,0,0,0,250);
   }else if(config_mode == 1){
     switch (serialInput)
     {
@@ -171,7 +151,7 @@ void process_config(){
     if(config.counting_effect > 2){
       config.counting_effect = 0;
     }
-    blink_leds(0,255,0,0,MAXIMUM_NUM_NEOPIXELS,250);
+    blink_leds(0,10,0,0,0,250);
   }else if(config_mode == 2){
     switch (serialInput)
     {
@@ -194,13 +174,7 @@ void process_config(){
     if(config.counting_color > 3){
       config.counting_color = 0;
     }
-    blink_leds(255,0,0,0,MAXIMUM_NUM_NEOPIXELS,250);
-  }
-
-  if(Sgo){
-    Serial.print("Timer time :"+config.timer_time);
-    Serial.print("Counting effect :"+config.counting_effect);
-    Serial.print("Counting colour :"+config.counting_color);
+    blink_leds(0,0,10,0,0,250);
   }
 }
 
@@ -230,13 +204,20 @@ void pause_timer(const uint32_t currentTime){
 void setup() 
 {
   pinMode(LED_BUILTIN, OUTPUT);
+
   Serial.begin(115200);
+
   pinMode(Sgo_pin,INPUT_PULLUP);
   pinMode(Smore_pin,INPUT_PULLUP);
   pinMode(Sesc_pin,INPUT_PULLUP);
   set_state(fsm1, sm1_off); 
 
-  interval = 40;
+  debouncerSgo.attach(Sgo_pin);
+  debouncerSgo.interval(50); // 50 ms debounce delay
+  debouncerSmore.attach(Smore_pin);
+  debouncerSmore.interval(50);
+  debouncerSesc.attach(Sesc_pin);
+  debouncerSesc.interval(50);
 }
 
 void loop() 
@@ -247,113 +228,116 @@ void loop()
     serialInput = Serial.read();
   }  
 
-  uint32_t now = millis();
-  if (now - last_cycle > interval) {
-    last_cycle = now;
+  debouncerSgo.update();
+  debouncerSmore.update();
+  debouncerSesc.update();
 
-    // Read the button state
-    Sgo = !digitalRead(Sgo_pin);
-    Smore = !digitalRead(Smore_pin);
-    Sesc = !digitalRead(Sesc_pin);
+  Sgo = debouncerSgo.fell();
+  Smore = debouncerSmore.fell();
+  Sesc = debouncerSesc.fell();
 
-    // Check if the button is pressed for 3 seconds
-    if (Smore) {
-        if (pressStartTime == 0) pressStartTime = millis();
-        if (millis() - pressStartTime > 3000){
-          configMode = !configMode;
-          pressStartTime = 0;
-        }  
-    } else {
+  // Check if the button is pressed for 3 seconds
+  if (!debouncerSmore.read()) {
+      if (pressStartTime == 0) pressStartTime = millis();
+      if (millis() - pressStartTime > 3000){
+        configMode = !configMode;
         pressStartTime = 0;
+      }  
+  } else {
+      pressStartTime = 0;
+  }
+
+  // Update the time in state (tis) for the finite state machine
+  const uint32_t currentTime = millis();
+  fsm1.tis = currentTime - fsm1.tes - total_pause_time;
+
+  if (fsm1.state == sm1_off && Sgo){ // If needed, change the next state
+    led = MAXIMUM_NUM_NEOPIXELS - 1;
+    fsm1.new_state = sm1_timer;
+  }else if(fsm1.state == sm1_off && (configMode || serialInput == 'c')){ // Enter config mode
+    configMode = true;
+    fsm1.new_state = sm1_config;
+  }else if(fsm1.state == sm1_config && (!configMode || serialInput == 's')){ // Exit config mode and save
+    configMode = false;
+    fsm1.new_state = sm1_off;
+  }else if(fsm1.state == sm1_config && (Sesc || serialInput == 'e')){ // Exit config mode without saving
+    configMode = false;
+    fsm1.new_state = sm1_off; 
+    config = temp_config; 
+  }else if(fsm1.state == sm1_timer && led < 0) { // Timer is done
+    Serial.print(fsm1.tis);
+    Serial.print("\n");
+    fsm1.new_state = sm1_blink; 
+    blink_on = true;
+    last_blink = fsm1.tis;
+    total_pause_time = 0;
+  }else if((fsm1.state == sm1_timer) && ( (Sgo) || (serialInput == 'g') ) ){ // Reset timer
+    led = MAXIMUM_NUM_NEOPIXELS - 1; 
+    fsm1.start = true;
+  }else if((fsm1.state == sm1_timer) && (Sesc || (fsm1.pause? (serialInput == 'r') : (serialInput == 'p')))){
+    pause_timer(currentTime); // Pause/Unpause timer
+  }else if((fsm1.state == sm1_timer) && ( (Smore) || (serialInput == 'm') )){ // Add more time
+    Serial.print("More \n");
+    if(led < MAXIMUM_NUM_NEOPIXELS - 1){
+      led++; 
+      strip.neoPixelSetValue(led - 1, r[config.counting_color], g[config.counting_color], b[config.counting_color],false);
+      strip.neoPixelSetValue(led, r[config.counting_color], g[config.counting_color], b[config.counting_color],true);
     }
+  }else if(fsm1.state == sm1_blink && fsm1.tis >= 10000){ // Blink is done
+    Serial.print(fsm1.tis);
+    Serial.print("\n");
+    fsm1.new_state = sm1_off;
+  }
 
-    // Update the time in state (tis) for the finite state machine
-    const uint32_t currentTime = millis();
-    fsm1.tis = currentTime - fsm1.tes - total_pause_time;
+  set_state(fsm1, fsm1.new_state); // Change state if needed
 
-    if (fsm1.state == sm1_off && Sgo){ // If needed, change the next state
-      led = MAXIMUM_NUM_NEOPIXELS - 1;
-      fsm1.new_state = sm1_timer;
-    }else if(fsm1.state == sm1_off && (configMode || serialInput == 'c')){ // Enter config mode
-      configMode = true;
-      fsm1.new_state = sm1_config;
-    }else if(fsm1.state == sm1_config && (!configMode || serialInput == 's')){ // Exit config mode and save
-      configMode = false;
-      fsm1.new_state = sm1_off;
-    }else if(fsm1.state == sm1_config && (Sesc || serialInput == 'e')){ // Exit config mode without saving
-      configMode = false;
-      fsm1.new_state = sm1_off; 
-      config = temp_config; 
-    }else if(fsm1.state == sm1_timer && led < 0) { // Timer is done
-      Serial.print(fsm1.tis);
-      fsm1.new_state = sm1_blink; 
-      blink_on = true;
+  if (fsm1.state == sm1_off){ 
+    if(fsm1.start){ 
+      strip.neoPixelFill(0,0,0,true); 
+      fsm1.start = false;
+    }
+  } else if(fsm1.state == sm1_config){
+    process_config(); // Process inputs to change config
+  } else if (fsm1.state == sm1_timer && !fsm1.pause){
+    if(led == MAXIMUM_NUM_NEOPIXELS - 1 && fsm1.start){
+      strip.neoPixelFill(r[config.counting_color], g[config.counting_color], b[config.counting_color],true);
+      fsm1.start = false;
+      fsm1.tup = fsm1.tis;
       last_blink = fsm1.tis;
-      total_pause_time = 0;
-    }else if((fsm1.state == sm1_timer) && ( (Sgo) || (serialInput == 'g') ) ){ // Reset timer
-      led = MAXIMUM_NUM_NEOPIXELS - 1; 
-      fsm1.start = true;
-    }else if((fsm1.state == sm1_timer) && (Sesc || (fsm1.pause? (serialInput == 'r') : (serialInput == 'p')))){
-      pause_timer(currentTime); // Pause/Unpause timer
-    }else if((fsm1.state == sm1_timer) && ( (Smore) || (serialInput == 'm') )){ // Add more time
-      Serial.print("More");
-      if(led < MAXIMUM_NUM_NEOPIXELS - 1){
-        led++; 
-        strip.neoPixelSetValue(led, r[config.counting_color], g[config.counting_color], b[config.counting_color],true);
-      }
-    }else if(fsm1.state == sm1_blink && fsm1.tis >= 2000){ // Blink is done
-      Serial.print(fsm1.tis);
-      fsm1.new_state = sm1_off;
+      current_led_brightness = 100; // Set the brightness of the first led to 100%
+      last_led_brightness = 100;
     }
-
-    set_state(fsm1, fsm1.new_state); // Change state if needed
-
-    if (fsm1.state == sm1_off){ 
-      if(fsm1.start){ 
-        strip.neoPixelFill(0,0,0,true); 
-        fsm1.start = false;
+    if(config.counting_effect == 2){
+      current_led_brightness = 100 - (fsm1.tis-fsm1.tup)*100/intervalOptions[config.timer_time];
+      int red = r[config.counting_color] * current_led_brightness / 100; 
+      int green = g[config.counting_color] * current_led_brightness / 100;
+      int blue = b[config.counting_color] * current_led_brightness / 100;
+      if(last_led_brightness != current_led_brightness && current_led_brightness > 0){
+        strip.neoPixelSetValue(led, red, green, blue,true);
+        last_led_brightness = current_led_brightness;
       }
-    } else if(fsm1.state == sm1_config){
-      process_config(); // Process inputs to change config
-    } else if (fsm1.state == sm1_timer && !fsm1.pause){
-      if(led == MAXIMUM_NUM_NEOPIXELS - 1 && fsm1.start){
-        strip.neoPixelFill(r[config.counting_color], g[config.counting_color], b[config.counting_color],true);
-        fsm1.start = false;
-        last_blink = fsm1.tis;
-        current_led_brightness = 100; // Set the brightness of the first led to 100%
-        last_led_brightness = 100;
-      }
-      if(config.counting_effect == 2){
-        current_led_brightness = 100 - (fsm1.tis-fsm1.tup)*100/intervalOptions[config.timer_time];
-        int red = r[config.counting_color] * current_led_brightness / 100; 
-        int green = g[config.counting_color] * current_led_brightness / 100;
-        int blue = b[config.counting_color] * current_led_brightness / 100;
-        if(last_led_brightness != current_led_brightness && current_led_brightness > 0){
-          strip.neoPixelSetValue(led, red, green, blue,true);
-          last_led_brightness = current_led_brightness;
-        }
-      }
-      if(fsm1.tis-fsm1.tup >= intervalOptions[config.timer_time]){
-        if(led>=0){
-          Serial.print(led);
-          strip.neoPixelSetValue(led, 0, 0, 0,true);
-          led--;
-        }
-        fsm1.tup = fsm1.tis;
-        last_blink = fsm1.tis;
-        current_led_brightness = 100;
-        last_led_brightness = 100;
-      }
-      if(config.counting_effect == 1 && (fsm1.tis-fsm1.tup >= (intervalOptions[config.timer_time]/2))){
-        blink_leds(r[config.counting_color], g[config.counting_color], b[config.counting_color],led,led,50);
-      }
-    }else if (fsm1.state == sm1_timer && fsm1.pause){
-      blink_leds(r[config.counting_color], g[config.counting_color], b[config.counting_color],0,led,250);
-    } else if (fsm1.state == sm1_blink) {
-      blink_leds(255,0,0,0,MAXIMUM_NUM_NEOPIXELS,250);
     }
-    
-    serialInput = 0; // Reset the input
-  }  
+    if(fsm1.tis-fsm1.tup >= intervalOptions[config.timer_time]){
+      if(led>=0){
+        Serial.print(led);
+        Serial.print("\n");
+        strip.neoPixelSetValue(led, 0, 0, 0,true);
+        led--;
+      }
+      fsm1.tup = fsm1.tis;
+      last_blink = fsm1.tis;
+      current_led_brightness = 100;
+      last_led_brightness = 100;
+    }
+    if(config.counting_effect == 1 && (fsm1.tis-fsm1.tup >= (intervalOptions[config.timer_time]/2))){
+      blink_leds(r[config.counting_color], g[config.counting_color], b[config.counting_color],led,led,50);
+    }
+  }else if (fsm1.state == sm1_timer && fsm1.pause){
+    blink_leds(r[config.counting_color], g[config.counting_color], b[config.counting_color],0,led,250);
+  } else if (fsm1.state == sm1_blink) {
+    blink_leds(10,0,0,0,MAXIMUM_NUM_NEOPIXELS,250);
+  }
+  
+  serialInput = 0; // Reset the input 
 }
 
