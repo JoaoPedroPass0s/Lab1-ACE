@@ -69,6 +69,29 @@ enum {
   sm1_config
 };
 
+typedef struct {
+  unsigned long lastDebounceTime;
+  bool lastButtonState;
+} debounce_t;
+
+debounce_t debounceSgo = {0, HIGH};   // Debounce state for Sgo button
+debounce_t debounceSmore = {0, HIGH}; // Debounce state for Smore button
+debounce_t debounceSesc = {0, HIGH};  // Debounce state for Sesc button
+
+// Modified debounce function that takes a pointer to debounce_t
+bool debounce(uint8_t buttonPin, unsigned long debounceDelay, debounce_t *debounceState) {
+  bool currentButtonState = digitalRead(buttonPin);
+
+  if (currentButtonState != debounceState->lastButtonState) {
+    debounceState->lastDebounceTime = millis();
+  }
+
+  if ((millis() - debounceState->lastDebounceTime) > debounceDelay) {
+    debounceState->lastButtonState = currentButtonState;
+  }
+
+  return debounceState->lastButtonState;
+}
 // Set new state
 void set_state(fsm_t& fsm, int new_state)
 {
