@@ -64,7 +64,7 @@ const int r[] = {0, 0, 10, 10}; // red values
 const int g[] = {0, 10, 10, 10}; // green values
 const int b[] = {10, 0, 0, 10}; // blue values
 
-// meaningful names for the fsm1 states
+// fsm1 states
 enum {
   sm1_off = 0,
   sm1_timer,
@@ -75,7 +75,7 @@ enum {
 // Set new state
 void set_state(fsm_t& fsm, int new_state)
 {
-  if (fsm.state != new_state) {  // if the state changed, reset tis
+  if (fsm.state != new_state) {
     fsm.state = new_state;
     fsm.tes = millis();
     fsm.tis = 0;
@@ -83,6 +83,14 @@ void set_state(fsm_t& fsm, int new_state)
     fsm.start = true;
     fsm.pause = false;
   }
+}
+
+void printOnSerial(const char* message, int value){
+  Serial.print(message);
+  if(value != NULL){
+    Serial.print(value);
+  }  
+  Serial.print("\n");
 }
 
 void blink_leds(int r,int g,int b,int ledS, int ledF, int interval){
@@ -98,7 +106,7 @@ void blink_leds(int r,int g,int b,int ledS, int ledF, int interval){
 
 void process_config(){
   if(fsm1.start){
-    Serial.print("Config Mode");
+    printOnSerial("Config Mode:",NULL);
     temp_config = config;
     config_mode = 0;
     fsm1.start = false;
@@ -184,9 +192,7 @@ void pause_timer(const uint32_t currentTime){
     start_pause_time = currentTime;
     last_pause_tup = fsm1.tup;
     fsm1.tup = 0;
-    Serial.print("Before Pause: ");
-    Serial.println(fsm1.tis);
-    Serial.print("\n");
+    printOnSerial("Before Pause: ",fsm1.tis);
   }else{
     total_pause_time += currentTime - start_pause_time;
     fsm1.tis = currentTime - fsm1.tes - total_pause_time;
@@ -195,9 +201,7 @@ void pause_timer(const uint32_t currentTime){
       strip.neoPixelSetValue(i, r[config.counting_color], g[config.counting_color], b[config.counting_color],false);
     }
     strip.neoPixelShow();
-    Serial.print("After Pause: ");
-    Serial.println(fsm1.tis);
-    Serial.print("\n");
+    printOnSerial("After Pause: ",fsm1.tis);
   }
 }
 
@@ -265,8 +269,7 @@ void loop()
     fsm1.new_state = sm1_off; 
     config = temp_config; 
   }else if(fsm1.state == sm1_timer && led < 0) { // Timer is done
-    Serial.print(fsm1.tis);
-    Serial.print("\n");
+    printOnSerial("Timer Done: ",fsm1.tis);
     fsm1.new_state = sm1_blink; 
     blink_on = true;
     last_blink = fsm1.tis;
@@ -277,15 +280,14 @@ void loop()
   }else if((fsm1.state == sm1_timer) && (Sesc || (fsm1.pause? (serialInput == 'r') : (serialInput == 'p')))){
     pause_timer(currentTime); // Pause/Unpause timer
   }else if((fsm1.state == sm1_timer) && ( (Smore) || (serialInput == 'm') )){ // Add more time
-    Serial.print("More \n");
+    printOnSerial("More Time: ",fsm1.tis);
     if(led < MAXIMUM_NUM_NEOPIXELS - 1){
       led++; 
       strip.neoPixelSetValue(led - 1, r[config.counting_color], g[config.counting_color], b[config.counting_color],false);
       strip.neoPixelSetValue(led, r[config.counting_color], g[config.counting_color], b[config.counting_color],true);
     }
   }else if(fsm1.state == sm1_blink && fsm1.tis >= 10000){ // Blink is done
-    Serial.print(fsm1.tis);
-    Serial.print("\n");
+    printOnSerial("Blink Done: ",fsm1.tis);
     fsm1.new_state = sm1_off;
   }
 
@@ -319,8 +321,7 @@ void loop()
     }
     if(fsm1.tis-fsm1.tup >= intervalOptions[config.timer_time]){
       if(led>=0){
-        Serial.print(led);
-        Serial.print("\n");
+        printOnSerial("Led: ",led);
         strip.neoPixelSetValue(led, 0, 0, 0,true);
         led--;
       }
