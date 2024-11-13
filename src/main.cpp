@@ -87,7 +87,7 @@ void set_state(fsm_t& fsm, int new_state)
 
 void printOnSerial(const char* message, int value){
   Serial.print(message);
-  if(value != NULL){
+  if(value != -1){
     Serial.print(value);
   }  
   Serial.print("\n");
@@ -106,7 +106,6 @@ void blink_leds(int r,int g,int b,int ledS, int ledF, int interval){
 
 void process_config(){
   if(fsm1.start){
-    printOnSerial("Config Mode:",NULL);
     temp_config = config;
     config_mode = 0;
     fsm1.start = false;
@@ -131,6 +130,9 @@ void process_config(){
       break;
     case '5':
       config.timer_time = 2;
+      break;
+    case 'A':
+      config.timer_time = 3;
       break;
     }
     if(Sgo){
@@ -163,16 +165,16 @@ void process_config(){
   }else if(config_mode == 2){
     switch (serialInput)
     {
-    case 'b':
+    case 'B':
       config.counting_color = 0;
       break;
-    case 'g':
+    case 'G':
       config.counting_color = 1;
       break;
-    case 'y':
+    case 'Y':
       config.counting_color = 2;
       break;
-    case 'w':
+    case 'W':
       config.counting_color = 3;
       break;  
     }
@@ -183,6 +185,14 @@ void process_config(){
       config.counting_color = 0;
     }
     blink_leds(0,0,10,0,0,250);
+  }
+
+  if(Sgo || Smore || serialInput != 0){
+    printOnSerial("Config Mode:",config_mode);
+    printOnSerial("Timer Time: ",config.timer_time);
+    printOnSerial("Counting Effect: ",config.counting_effect);
+    printOnSerial("Counting Color: ",config.counting_color);
+    printOnSerial("                ",-1);
   }
 }
 
@@ -267,7 +277,12 @@ void loop()
   }else if(fsm1.state == sm1_config && (Sesc || serialInput == 'e')){ // Exit config mode without saving
     configMode = false;
     fsm1.new_state = sm1_off; 
-    config = temp_config; 
+    config = temp_config; // Restore the previous config
+    // Print the config
+    printOnSerial("Config Mode:",config_mode);
+    printOnSerial("Timer Time: ",config.timer_time);
+    printOnSerial("Counting Effect: ",config.counting_effect);
+    printOnSerial("Counting Color: ",config.counting_color);
   }else if(fsm1.state == sm1_timer && led < 0) { // Timer is done
     printOnSerial("Timer Done: ",fsm1.tis);
     fsm1.new_state = sm1_blink; 
@@ -280,7 +295,7 @@ void loop()
   }else if((fsm1.state == sm1_timer) && (Sesc || (fsm1.pause? (serialInput == 'r') : (serialInput == 'p')))){
     pause_timer(currentTime); // Pause/Unpause timer
   }else if((fsm1.state == sm1_timer) && ( (Smore) || (serialInput == 'm') )){ // Add more time
-    printOnSerial("More Time: ",fsm1.tis);
+    printOnSerial("More Time",-1);
     if(led < MAXIMUM_NUM_NEOPIXELS - 1){
       led++; 
       strip.neoPixelSetValue(led - 1, r[config.counting_color], g[config.counting_color], b[config.counting_color],false);
