@@ -265,6 +265,7 @@ void loop()
   const uint32_t currentTime = millis();
   fsm1.tis = currentTime - fsm1.tes - total_pause_time;
 
+  // State transitions
   if (fsm1.state == sm1_off && Sgo){ // If needed, change the next state
     led = MAXIMUM_NUM_NEOPIXELS - 1;
     fsm1.new_state = sm1_timer;
@@ -308,6 +309,7 @@ void loop()
 
   set_state(fsm1, fsm1.new_state); // Change state if needed
 
+  // State actions
   if (fsm1.state == sm1_off){ 
     if(fsm1.start){ 
       strip.neoPixelFill(0,0,0,true); 
